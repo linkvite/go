@@ -1,2 +1,2 @@
 # go
-🦫 Linkvite SDK for Go
+🦫 Go SDK for Linkvite.
