@@ -39,8 +39,13 @@ clean:
 version:
 	@echo "Current version: $(VERSION)"
 
+# Check if working tree and index are clean
+check-clean:
+	@git diff --quiet || (echo "Working tree dirty. Commit changes before releasing."; exit 1)
+	@git diff --cached --quiet || (echo "Index dirty. Commit staged changes before releasing."; exit 1)
+
 # Release helpers
-release-major:
+release-major: check-clean
 	@$(eval NEW_VERSION := $(shell echo $$(($(MAJOR)+1)).0.0))
 	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
 	@sed -i '' 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
@@ -50,7 +55,7 @@ release-major:
 	@echo "Created tag v$(NEW_VERSION)"
 	@echo "Run 'git push && git push --tags' to publish"
 
-release-minor:
+release-minor: check-clean
 	@$(eval NEW_VERSION := $(MAJOR).$(shell echo $$(($(MINOR)+1))).0)
 	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
 	@sed -i '' 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
@@ -60,15 +65,15 @@ release-minor:
 	@echo "Created tag v$(NEW_VERSION)"
 	@echo "Run 'git push && git push --tags' to publish"
 
-release-patch:
+release-patch: check-clean
 	@$(eval NEW_VERSION := $(MAJOR).$(MINOR).$(shell echo $$(($(PATCH)+1))))
 	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
 	@sed -i '' 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
 	@git add version.go
 	@git commit -m "chore: bump version to $(NEW_VERSION)"
 	@git tag -a v$(NEW_VERSION) -m "Release v$(NEW_VERSION)"
-	@echo "Created tag v$(NEW_VERSION)"
-	@echo "Run 'git push && git push --tags' to publish"
+	@git push --follow-tags
+	@echo "Published v$(NEW_VERSION)"
 
 # Pre-release checks
 check: lint test
