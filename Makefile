@@ -66,8 +66,8 @@ release-major: check-clean
 	@git add version.go
 	@git commit -m "chore: bump version to $(NEW_VERSION)"
 	@git tag -a v$(NEW_VERSION) -m "Release v$(NEW_VERSION)"
-	@git push --follow-tags
-	@echo "Published v$(NEW_VERSION)"
+	@echo "Created tag v$(NEW_VERSION)"
+	@echo "Run 'git push && git push --tags' to publish"
 
 release-minor: check-clean
 	@$(eval NEW_VERSION := $(MAJOR).$(shell echo $$(($(MINOR)+1))).0)
@@ -76,8 +76,8 @@ release-minor: check-clean
 	@git add version.go
 	@git commit -m "chore: bump version to $(NEW_VERSION)"
 	@git tag -a v$(NEW_VERSION) -m "Release v$(NEW_VERSION)"
-	@git push --follow-tags
-	@echo "Published v$(NEW_VERSION)"
+	@echo "Created tag v$(NEW_VERSION)"
+	@echo "Run 'git push && git push --tags' to publish"
 
 release-patch: check-clean
 	@$(eval NEW_VERSION := $(MAJOR).$(MINOR).$(shell echo $$(($(PATCH)+1))))
@@ -86,8 +86,8 @@ release-patch: check-clean
 	@git add version.go
 	@git commit -m "chore: bump version to $(NEW_VERSION)"
 	@git tag -a v$(NEW_VERSION) -m "Release v$(NEW_VERSION)"
-	@git push --follow-tags
-	@echo "Published v$(NEW_VERSION)"
+	@echo "Created tag v$(NEW_VERSION)"
+	@echo "Run 'git push && git push --tags' to publish"
 
 # Pre-release checks
 check: lint test
