@@ -1,7 +1,5 @@
 package main
 
-// use the Linkvite Go SDK to interact with the Linkvite API
-
 import (
 	"context"
 	"fmt"
