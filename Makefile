@@ -1,4 +1,4 @@
-.PHONY: test lint build clean cover release-major release-minor release-patch
+.PHONY: test lint build clean cover release-major release-minor release-patch check-clean
 
 # Get current version from version.go
 VERSION := $(shell grep 'const Version' version.go | sed 's/.*"\(.*\)"/\1/')
@@ -39,8 +39,27 @@ clean:
 version:
 	@echo "Current version: $(VERSION)"
 
+# Check if working tree and index are clean
+check-clean:
+	@if ! git diff --quiet; then \
+		echo "Unstaged changes present. Commit/stash before releasing."; \
+		git --no-pager diff --name-only; \
+		exit 1; \
+	fi
+	@if ! git diff --cached --quiet; then \
+		echo "Staged changes present. Commit/unstage before releasing."; \
+		git --no-pager diff --cached --name-only; \
+		exit 1; \
+	fi
+	@if [ -n "$$(git ls-files --others --exclude-standard)" ]; then \
+		echo "Untracked files present. Add/ignore before releasing:"; \
+		git ls-files --others --exclude-standard; \
+		exit 1; \
+	fi
+
+
 # Release helpers
-release-major:
+release-major: check-clean
 	@$(eval NEW_VERSION := $(shell echo $$(($(MAJOR)+1)).0.0))
 	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
 	@sed -i '' 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
@@ -50,7 +69,7 @@ release-major:
 	@echo "Created tag v$(NEW_VERSION)"
 	@echo "Run 'git push && git push --tags' to publish"
 
-release-minor:
+release-minor: check-clean
 	@$(eval NEW_VERSION := $(MAJOR).$(shell echo $$(($(MINOR)+1))).0)
 	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
 	@sed -i '' 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
@@ -60,15 +79,15 @@ release-minor:
 	@echo "Created tag v$(NEW_VERSION)"
 	@echo "Run 'git push && git push --tags' to publish"
 
-release-patch:
+release-patch: check-clean
 	@$(eval NEW_VERSION := $(MAJOR).$(MINOR).$(shell echo $$(($(PATCH)+1))))
 	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
 	@sed -i '' 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
 	@git add version.go
 	@git commit -m "chore: bump version to $(NEW_VERSION)"
 	@git tag -a v$(NEW_VERSION) -m "Release v$(NEW_VERSION)"
-	@echo "Created tag v$(NEW_VERSION)"
-	@echo "Run 'git push && git push --tags' to publish"
+	@git push --follow-tags
+	@echo "Published v$(NEW_VERSION)"
 
 # Pre-release checks
 check: lint test
@@ -84,6 +103,7 @@ help:
 	@echo "  make clean         - Remove generated files"
 	@echo "  make version       - Show current version"
 	@echo "  make check         - Run lint and test"
+	@echo "  make check-clean   - Ensure working tree is clean before releasing"
 	@echo ""
 	@echo "Release targets:"
 	@echo "  make release-major - Bump major version (x.0.0)"
