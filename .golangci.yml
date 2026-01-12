@@ -1,0 +1,64 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  default: fast
+
+  enable:
+    - errcheck
+    - errorlint
+    - bodyclose
+    - nilerr
+    - noctx
+    - prealloc
+    - unparam
+    - gocritic
+    - misspell
+    - unconvert
+    - wastedassign
+    - dogsled
+
+  disable:
+    - funlen
+    - gocognit
+    - gocyclo
+    - cyclop
+    - dupl
+    - lll
+    - nestif
+    - wsl
+    - godot
+    - testpackage
+    - nlreturn
+    - mnd
+  
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - unnamedResult
+        - hugeParam
+
+    govet:
+      enable:
+        - nilness
+        - unusedresult
+        - reflectvaluecompare
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gofumpt
+    - gci
