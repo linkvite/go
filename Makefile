@@ -1,4 +1,4 @@
-.PHONY: test lint build clean cover release-major release-minor release-patch
+.PHONY: test lint build clean cover release-major release-minor release-patch check-clean
 
 # Get current version from version.go
 VERSION := $(shell grep 'const Version' version.go | sed 's/.*"\(.*\)"/\1/')
@@ -41,8 +41,22 @@ version:
 
 # Check if working tree and index are clean
 check-clean:
-	@git diff --quiet || (echo "Working tree dirty. Commit changes before releasing."; exit 1)
-	@git diff --cached --quiet || (echo "Index dirty. Commit staged changes before releasing."; exit 1)
+	@if ! git diff --quiet; then \
+		echo "Unstaged changes present. Commit/stash before releasing."; \
+		git --no-pager diff --name-only; \
+		exit 1; \
+	fi
+	@if ! git diff --cached --quiet; then \
+		echo "Staged changes present. Commit/unstage before releasing."; \
+		git --no-pager diff --cached --name-only; \
+		exit 1; \
+	fi
+	@if [ -n "$$(git ls-files --others --exclude-standard)" ]; then \
+		echo "Untracked files present. Add/ignore before releasing:"; \
+		git ls-files --others --exclude-standard; \
+		exit 1; \
+	fi
+
 
 # Release helpers
 release-major: check-clean
@@ -89,6 +103,7 @@ help:
 	@echo "  make clean         - Remove generated files"
 	@echo "  make version       - Show current version"
 	@echo "  make check         - Run lint and test"
+	@echo "  make check-clean   - Ensure working tree is clean before releasing"
 	@echo ""
 	@echo "Release targets:"
 	@echo "  make release-major - Bump major version (x.0.0)"
