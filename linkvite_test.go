@@ -9,8 +9,10 @@ import (
 	"testing"
 )
 
-const key = "link_test-api-key"
-const loginEndpoint = "/v1/auth/login"
+const (
+	key           = "link_test-api-key"
+	loginEndpoint = "/v1/auth/login"
+)
 
 // testClient creates a test client with a mock server.
 func testClient(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Server) {
