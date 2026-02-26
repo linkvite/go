@@ -1,4 +1,4 @@
-.PHONY: test lint build clean cover release-major release-minor release-patch check-clean
+.PHONY: test lint build clean cover release-major release-minor release-patch check-clean proxy
 
 # Get current version from version.go
 VERSION := $(shell grep 'const Version' version.go | sed 's/.*"\(.*\)"/\1/')
@@ -89,6 +89,12 @@ release-patch: check-clean
 	@echo "Created tag v$(NEW_VERSION)"
 	@echo "Run 'git push && git push --tags' to publish"
 
+# Trigger the Go module proxy to index the current version
+proxy:
+	@echo "Triggering Go module proxy for v$(VERSION)..."
+	@GOPROXY=proxy.golang.org go list -m github.com/linkvite/go@v$(VERSION)
+	@echo "Done. v$(VERSION) is now available via go get."
+
 # Pre-release checks
 check: lint test
 	@echo "All checks passed!"
@@ -109,3 +115,4 @@ help:
 	@echo "  make release-major - Bump major version (x.0.0)"
 	@echo "  make release-minor - Bump minor version (0.x.0)"
 	@echo "  make release-patch - Bump patch version (0.0.x)"
+	@echo "  make proxy         - Trigger Go module proxy to index current version"
