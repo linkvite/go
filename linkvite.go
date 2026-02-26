@@ -4,13 +4,28 @@
 // and share bookmarks. This SDK provides a convenient way to interact
 // with the Linkvite API from Go applications.
 //
-// Basic usage:
+// # Authentication
+//
+// Three authentication methods are supported:
+//
+// API key:
 //
 //	client, err := linkvite.NewClient("link_your-api-key")
 //
-//	if err != nil {
-//		log.Fatalf("failed to create client: %v", err)
-//	}
+// Access token (e.g. from a previous session):
+//
+//	client, err := linkvite.NewClientWithTokens(accessToken, refreshToken)
+//
+// Username or email + password:
+//
+//	client, err := linkvite.NewClientWithCredentials(ctx, "user@example.com", "password")
+//
+// To obtain tokens without immediately creating a client, use Login:
+//
+//	result, err := linkvite.Login(ctx, "user@example.com", "password")
+//	// result.AccessToken, result.RefreshToken, result.User
+//
+// # Basic usage
 //
 //	// Get current user
 //	user, err := client.User.Get(ctx)
@@ -251,6 +266,93 @@ func NewClient(apiKey string, opts ...Option) (*Client, error) {
 func NewClientWithTokens(accessToken, refreshToken string, opts ...Option) (*Client, error) {
 	opts = append([]Option{WithTokens(accessToken, refreshToken)}, opts...)
 	return NewClient("", opts...)
+}
+
+// Login authenticates with an identifier (username or email) and password,
+// returning tokens and the authenticated user. Use the returned tokens with
+// NewClientWithTokens to create an authenticated client.
+func Login(ctx context.Context, identifier, password string, opts ...Option) (*LoginResult, error) {
+	if strings.TrimSpace(identifier) == "" {
+		return nil, fmt.Errorf("linkvite: identifier cannot be empty")
+	}
+	if strings.TrimSpace(password) == "" {
+		return nil, fmt.Errorf("linkvite: password cannot be empty")
+	}
+
+	cfg := &Client{
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+		baseURL:    DefaultBaseURL,
+		userAgent:  fmt.Sprintf("linkvite-go/%s", Version),
+	}
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	payload := struct {
+		Identifier string `json:"identifier"`
+		Password   string `json:"password"`
+	}{Identifier: identifier, Password: password}
+
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("linkvite: marshal error: %w", err)
+	}
+
+	authURL := cfg.baseURL + "/v1/auth/login"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, authURL, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("linkvite: request error: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", cfg.userAgent)
+
+	resp, err := cfg.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("linkvite: request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("linkvite: read error: %w", err)
+	}
+
+	var apiResp struct {
+		OK     bool         `json:"ok"`
+		Data   *LoginResult `json:"data,omitempty"`
+		Error  string       `json:"error,omitempty"`
+		Errors any          `json:"errors,omitempty"`
+	}
+	if err := json.Unmarshal(respBody, &apiResp); err != nil {
+		return nil, fmt.Errorf("linkvite: parse error: %w", err)
+	}
+
+	if !apiResp.OK {
+		return nil, &Error{
+			StatusCode: resp.StatusCode,
+			Message:    apiResp.Error,
+			Errors:     apiResp.Errors,
+		}
+	}
+
+	return apiResp.Data, nil
+}
+
+// NewClientWithCredentials creates a new client by logging in with an identifier
+// (username or email) and password. Options such as WithBaseURL and WithHTTPClient
+// are applied to both the login request and the resulting client.
+func NewClientWithCredentials(ctx context.Context, identifier, password string, opts ...Option) (*Client, error) {
+	result, err := Login(ctx, identifier, password, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return NewClientWithTokens(result.AccessToken, result.RefreshToken, opts...)
 }
 
 // RefreshAccessToken refreshes the access token using the refresh token

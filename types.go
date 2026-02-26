@@ -404,6 +404,13 @@ type ParsedLink struct {
 	SiteName    string `json:"site_name"`
 }
 
+// LoginResult holds the tokens and user info returned after a successful login.
+type LoginResult struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	User         User   `json:"user"`
+}
+
 // Pagination represents pagination information.
 type Pagination struct {
 	Query    string `json:"q,omitempty"`
