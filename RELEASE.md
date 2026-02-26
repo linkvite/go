@@ -6,16 +6,25 @@
    const Version = "1.2.2"
    ```
 
-2. Commit and tag:
+2. Commit and open a PR (main is branch-protected):
 
    ```sh
+   git checkout -b bump/v1.2.2
    git add version.go
    git commit -m "chore: bump version to 1.2.2"
-   git tag v1.2.2
-   git push origin main --tags
+   git push origin bump/v1.2.2
+   # open a PR, get it reviewed and merged
    ```
 
-3. Trigger the Go module proxy to index the new version:
+3. After the PR is merged, tag the merge commit on main:
+
+   ```sh
+   git checkout main && git pull
+   git tag v1.2.2
+   git push origin v1.2.2
+   ```
+
+4. Trigger the Go module proxy to index the new version:
 
    ```sh
    GOPROXY=proxy.golang.org go list -m github.com/linkvite/go@v1.2.2
