@@ -17,24 +17,25 @@ func main() {
 	}
 	baseURL := os.Getenv("LINKVITE_BASE_URL")
 
-	apiKey := os.Getenv("LINKVITE_API_KEY")
-	if apiKey == "" {
-		log.Fatal("LINKVITE_API_KEY not set in environment")
-	}
+	// apiKey := os.Getenv("LINKVITE_API_KEY")
+	// if apiKey == "" {
+	// 	log.Fatal("LINKVITE_API_KEY not set in environment")
+	// }
 
-	client, err := linkvite.NewClient(apiKey, linkvite.WithBaseURL(baseURL))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// client, err := linkvite.NewClientWithTokens(
-	// 	os.Getenv("LINKVITE_ACCESS_TOKEN"),
-	// 	os.Getenv("LINKVITE_REFRESH_TOKEN"),
-	// 	linkvite.WithBaseURL(baseURL),
-	// )
+	// client, err := linkvite.NewClient(apiKey, linkvite.WithBaseURL(baseURL))
 	// if err != nil {
 	// 	log.Fatal(err)
 	// }
+
+	client, err := linkvite.NewClientWithCredentials(
+		context.Background(),
+		os.Getenv("LINKVITE_IDENTIFIER"),
+		os.Getenv("LINKVITE_PASSWORD"),
+		linkvite.WithBaseURL(baseURL),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	ctx := context.Background()
 

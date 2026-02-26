@@ -10,6 +10,7 @@ import (
 )
 
 const key = "link_test-api-key"
+const loginEndpoint = "/v1/auth/login"
 
 // testClient creates a test client with a mock server.
 func testClient(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Server) {
@@ -138,6 +139,120 @@ func TestRefreshAccessToken(t *testing.T) {
 	}
 	if client.refreshToken != newRefreshToken {
 		t.Errorf("expected refreshToken to be '%s', got '%s'", newRefreshToken, client.refreshToken)
+	}
+}
+
+func TestLogin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != loginEndpoint {
+			t.Errorf("expected path %s, got %s", loginEndpoint, r.URL.Path)
+		}
+
+		var req struct {
+			Identifier string `json:"identifier"`
+			Password   string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if req.Identifier != "testuser" {
+			t.Errorf("expected identifier 'testuser', got '%s'", req.Identifier)
+		}
+		if req.Password != "secret" {
+			t.Errorf("expected password 'secret', got '%s'", req.Password)
+		}
+
+		_, _ = w.Write(jsonResponse(t, map[string]any{
+			"access_token":  "new-access-token",
+			"refresh_token": "new-refresh-token",
+			"user": map[string]any{
+				"id":       "usr_123",
+				"name":     "Test User",
+				"username": "testuser",
+				"email":    "test@example.com",
+			},
+		}))
+	}))
+	defer server.Close()
+
+	result, err := Login(context.Background(), "testuser", "secret", WithBaseURL(server.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.AccessToken != "new-access-token" {
+		t.Errorf("expected access token 'new-access-token', got '%s'", result.AccessToken)
+	}
+	if result.RefreshToken != "new-refresh-token" {
+		t.Errorf("expected refresh token 'new-refresh-token', got '%s'", result.RefreshToken)
+	}
+	if result.User.ID != "usr_123" {
+		t.Errorf("expected user ID 'usr_123', got '%s'", result.User.ID)
+	}
+}
+
+func TestLoginError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write(jsonError(t, "invalid credentials"))
+	}))
+	defer server.Close()
+
+	_, err := Login(context.Background(), "testuser", "wrongpassword", WithBaseURL(server.URL))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var apiErr *Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if apiErr.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", apiErr.StatusCode)
+	}
+	if apiErr.Message != "invalid credentials" {
+		t.Errorf("expected message 'invalid credentials', got '%s'", apiErr.Message)
+	}
+}
+
+func TestLoginValidation(t *testing.T) {
+	ctx := context.Background()
+
+	if _, err := Login(ctx, "", "password"); err == nil {
+		t.Error("expected error for empty identifier")
+	}
+	if _, err := Login(ctx, "user", ""); err == nil {
+		t.Error("expected error for empty password")
+	}
+}
+
+func TestNewClientWithCredentials(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != loginEndpoint {
+			t.Errorf("expected path %s, got %s", loginEndpoint, r.URL.Path)
+		}
+		_, _ = w.Write(jsonResponse(t, map[string]any{
+			"access_token":  "cred-access-token",
+			"refresh_token": "cred-refresh-token",
+			"user":          map[string]any{"id": "usr_456"},
+		}))
+	}))
+	defer server.Close()
+
+	client, err := NewClientWithCredentials(context.Background(), "user@example.com", "pass", WithBaseURL(server.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.accessToken != "cred-access-token" {
+		t.Errorf("expected accessToken 'cred-access-token', got '%s'", client.accessToken)
+	}
+	if client.refreshToken != "cred-refresh-token" {
+		t.Errorf("expected refreshToken 'cred-refresh-token', got '%s'", client.refreshToken)
+	}
+	if client.authType != AuthTypeAccessToken {
+		t.Errorf("expected authType AuthTypeAccessToken, got %s", client.authType.String())
 	}
 }
 
