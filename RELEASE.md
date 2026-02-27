@@ -32,5 +32,5 @@ Make sure your working tree is clean before starting (`make check-clean`).
 4. **Trigger the Go module proxy** to index the new version immediately:
 
    ```sh
-   GOPROXY=proxy.golang.org go list -m github.com/linkvite/go@v1.2.2
+   make proxy
    ```
