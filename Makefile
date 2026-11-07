@@ -1,10 +1,14 @@
-.PHONY: test lint fmt build clean cover generate check-generated release-major release-minor release-patch tag check-clean proxy
+.PHONY: test lint fmt build clean cover generate check-generated release-major release-minor release-patch tag check-clean check-major proxy
 
 # Get current version from version.go
 VERSION := $(shell grep 'const Version' version.go | sed 's/.*"\(.*\)"/\1/')
 MAJOR := $(shell echo $(VERSION) | cut -d. -f1)
 MINOR := $(shell echo $(VERSION) | cut -d. -f2)
 PATCH := $(shell echo $(VERSION) | cut -d. -f3)
+# Major version the module path allows: /vN suffix in go.mod, else v0/v1
+MODULE := $(shell sed -n 's/^module //p' go.mod)
+MODULE_BASE := $(shell echo $(MODULE) | sed 's|/v[0-9][0-9]*$$||')
+MODULE_MAJOR := $(or $(shell echo $(MODULE) | sed -n 's|.*/v\([0-9][0-9]*\)$$|\1|p'),1)
 
 # Default target
 all: lint test
@@ -72,17 +76,14 @@ check-clean:
 
 
 # Release helpers
-release-major: check-clean
-	@$(eval NEW_VERSION := $(shell echo $$(($(MAJOR)+1)).0.0))
-	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
-	@perl -pi -e 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
-	@git add version.go
-	@git commit -m "chore: bump version to $(NEW_VERSION)"
-	@git tag -a v$(NEW_VERSION) -m "Release v$(NEW_VERSION)"
-	@echo "Created tag v$(NEW_VERSION)"
-	@echo "Run 'git push && git push --tags' to publish"
+# A new major version needs a new module path (/v3, ...), so it isn't a
+# bump-and-tag: Go rejects a v3.0.0 tag on a /v2 module. See RELEASE.md.
+release-major:
+	@echo "A major release changes the module path: $(MODULE) -> $(MODULE_BASE)/v$$(($(MODULE_MAJOR)+1))."
+	@echo "Follow 'Major versions' in RELEASE.md (go.mod, imports, version.go), merge, then 'make tag'."
+	@exit 1
 
-release-minor: check-clean
+release-minor: check-clean check-major
 	@$(eval NEW_VERSION := $(MAJOR).$(shell echo $$(($(MINOR)+1))).0)
 	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
 	@perl -pi -e 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
@@ -92,7 +93,7 @@ release-minor: check-clean
 	@echo "Created tag v$(NEW_VERSION)"
 	@echo "Run 'git push && git push --tags' to publish"
 
-release-patch: check-clean
+release-patch: check-clean check-major
 	@$(eval NEW_VERSION := $(MAJOR).$(MINOR).$(shell echo $$(($(PATCH)+1))))
 	@echo "Bumping version from $(VERSION) to $(NEW_VERSION)"
 	@perl -pi -e 's/const Version = "$(VERSION)"/const Version = "$(NEW_VERSION)"/' version.go
@@ -104,16 +105,24 @@ release-patch: check-clean
 
 # Tag the version already in version.go, without bumping it (e.g. the first
 # release of a new major: version.go says 2.0.0, nothing to bump)
-tag: check-clean
+tag: check-clean check-major
 	@if git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null; then echo "v$(VERSION) already exists"; exit 1; fi
 	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
 	@echo "Created tag v$(VERSION) on $$(git rev-parse --short HEAD)"
 	@echo "Run 'git push origin v$(VERSION)' to publish"
 
+# version.go's major must match the module path, or Go rejects the tag
+check-major:
+	@if [ "$(MAJOR)" != "$(MODULE_MAJOR)" ] && ! { [ "$(MODULE_MAJOR)" = 1 ] && [ "$(MAJOR)" = 0 ]; }; then \
+		echo "version.go says $(VERSION) but $(MODULE) only takes v$(MODULE_MAJOR).x.y tags."; \
+		echo "Fix version.go, or for a new major follow 'Major versions' in RELEASE.md."; \
+		exit 1; \
+	fi
+
 # Trigger the Go module proxy to index the current version
-proxy:
+proxy: check-major
 	@echo "Triggering Go module proxy for v$(VERSION)..."
-	@GOPROXY=proxy.golang.org go list -m github.com/linkvite/go/v2@v$(VERSION)
+	@GOPROXY=proxy.golang.org go list -m $(MODULE)@v$(VERSION)
 	@echo "Done. v$(VERSION) is now available via go get."
 
 # Pre-release checks
@@ -136,7 +145,7 @@ help:
 	@echo "  make check-clean   - Ensure working tree is clean before releasing"
 	@echo ""
 	@echo "Release targets:"
-	@echo "  make release-major - Bump major version (x.0.0)"
+	@echo "  make release-major - Explains a major release (needs a new module path)"
 	@echo "  make release-minor - Bump minor version (0.x.0)"
 	@echo "  make release-patch - Bump patch version (0.0.x)"
 	@echo "  make tag           - Tag the current version.go version without bumping"
