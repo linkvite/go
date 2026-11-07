@@ -11,12 +11,15 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.24"
+
+      - name: Generated code is current
+        run: go run ./internal/gen -check
 
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
@@ -31,29 +34,30 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: stable
 
+      # keep in step with the version you run locally (golangci-lint --version)
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.2.2
+          version: v2.15.0
 
   build:
     name: Build
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ["1.21", "1.22", "1.23", "1.24"]
+        go-version: ["1.24", "stable"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
 

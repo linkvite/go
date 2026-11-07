@@ -1,45 +1,51 @@
 version: "2"
 
+# golangci-lint v2 (CI pins the exact version: .github/workflows/ci.yml).
+# Linters are listed explicitly rather than taken from a preset, so a new
+# golangci-lint release can't switch new ones on (or deprecated ones, like
+# gomodguard in the "fast" preset) and fail CI without a code change.
+
 run:
   timeout: 5m
   tests: true
   modules-download-mode: readonly
 
 linters:
-  default: fast
+  default: none
 
   enable:
+    # correctness
+    - govet
+    - staticcheck
     - errcheck
     - errorlint
+    - ineffassign
+    - unused
     - bodyclose
     - nilerr
     - noctx
+    - copyloopvar
+    # style and performance
+    - gocritic
     - prealloc
     - unparam
-    - gocritic
-    - misspell
     - unconvert
     - wastedassign
     - dogsled
+    - dupword
+    - misspell
+    - usestdlibvars
 
-  disable:
-    - funlen
-    - gocognit
-    - gocyclo
-    - cyclop
-    - dupl
-    - lll
-    - nestif
-    - wsl
-    - godot
-    - testpackage
-    - nlreturn
-    - mnd
-  
   settings:
     errcheck:
       check-type-assertions: true
       check-blank: false
+
+    govet:
+      enable:
+        - nilness
+        - unusedresult
+        - reflectvaluecompare
 
     gocritic:
       enabled-tags:
@@ -50,15 +56,25 @@ linters:
         - unnamedResult
         - hugeParam
 
-    govet:
-      enable:
-        - nilness
-        - unusedresult
-        - reflectvaluecompare
+    dupword:
+      # "return nil, nil, err" is not a typo
+      ignore:
+        - nil
+
+    misspell:
+      locale: US
+
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
 
 formatters:
   enable:
-    - gofmt
-    - goimports
     - gofumpt
-    - gci
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/linkvite/go
