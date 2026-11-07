@@ -64,7 +64,7 @@ A breaking change needs a new major version, and Go puts the major in the import
 2. Set `version.go` to `3.0.0`.
 3. Merge, then on `main`: `make tag` and `git push origin v3.0.0`.
 
-Don't use `make release-major` for this: it bumps `version.go` but doesn't change the module path, and a `v3.0.0` tag on a `/v2` module path is rejected by the go command.
+`make release-major` only prints these steps: a `v3.0.0` tag on a `/v2` module path is rejected by the go command. `make tag`, `make release-minor`/`-patch` and `make proxy` refuse to run when `version.go`'s major doesn't match the module path.
 
 ### The first v2 release
 
