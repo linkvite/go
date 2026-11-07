@@ -51,12 +51,12 @@ func server(t *testing.T, handler func(w http.ResponseWriter, r *http.Request, n
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
-func newTest(t *testing.T, srv *httptest.Server, opts ...Option) *Client {
+func newTest(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
-	c, err := NewClient("link_test", append([]Option{WithBaseURL(srv.URL)}, opts...)...)
+	c, err := NewClient("link_test", WithBaseURL(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,9 @@ func TestJSONBodyAndEnvelope(t *testing.T) {
 		t.Errorf("decoded %+v", b)
 	}
 	var sent map[string]any
-	json.Unmarshal((*calls)[0].body, &sent)
+	if err := json.Unmarshal((*calls)[0].body, &sent); err != nil {
+		t.Fatalf("request body: %v", err)
+	}
 	if sent["url"] != "https://example.com" || sent["starred"] != false {
 		t.Errorf("sent %s", (*calls)[0].body)
 	}
@@ -113,7 +115,7 @@ func TestMessageOnlyAndText(t *testing.T) {
 	srv, _ := server(t, func(w http.ResponseWriter, r *http.Request, _ int) {
 		if strings.HasSuffix(r.URL.Path, "/rss") {
 			w.Header().Set("Content-Type", "application/xml")
-			io.WriteString(w, "<rss/>")
+			_, _ = io.WriteString(w, "<rss/>")
 			return
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "message": "Bookmark deleted"})
@@ -253,7 +255,9 @@ func TestEveryOperationHasAMethod(t *testing.T) {
 			SDK        string `json:"x-linkvite-sdk"`
 		} `json:"paths"`
 	}
-	json.Unmarshal(raw, &doc)
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
 	c, _ := NewClient("k")
 	cv := reflect.ValueOf(c).Elem()
 	n := 0

@@ -102,8 +102,11 @@ func main() {
 	for name, src := range files {
 		out, err := format.Source(src)
 		if err != nil {
-			os.WriteFile("/tmp/"+name, src, 0o644)
-			fmt.Fprintf(os.Stderr, "gofmt %s: %v (raw at /tmp/%s)\n", name, err, name)
+			raw := filepath.Join(os.TempDir(), name)
+			if werr := os.WriteFile(raw, src, 0o600); werr != nil {
+				raw = "unsaved: " + werr.Error()
+			}
+			fmt.Fprintf(os.Stderr, "gofmt %s: %v (raw source: %s)\n", name, err, raw)
 			os.Exit(1)
 		}
 		path := filepath.Join(*dir, name)
@@ -265,8 +268,9 @@ func (g *gen) baseType(s *schema, hint string) string {
 			if ap, ok := s.AdditionalProperties.(map[string]any); ok && len(ap) > 0 {
 				b, _ := json.Marshal(ap)
 				var as schema
-				json.Unmarshal(b, &as)
-				return "map[string]" + g.goType(&as, hint+"Value")
+				if err := json.Unmarshal(b, &as); err == nil {
+					return "map[string]" + g.goType(&as, hint+"Value")
+				}
 			}
 			return "map[string]any"
 		}
@@ -330,7 +334,7 @@ func fieldDoc(p *schema) string {
 		parts = append(parts, inner.Description)
 	}
 	if len(inner.Enum) > 0 {
-		var vs []string
+		vs := make([]string, 0, len(inner.Enum))
 		for _, e := range inner.Enum {
 			vs = append(vs, fmt.Sprintf("%v", e))
 		}
@@ -470,9 +474,11 @@ func (g *gen) method(svc string, m method) string {
 	op := m.op
 	mName := goName(m.name)
 	base := strings.TrimSuffix(svc, "Service") + mName
-	var sig, pathArgs []string
+	params := pathParam.FindAllStringSubmatch(m.path, -1)
+	sig := make([]string, 0, len(params)+3)
+	pathArgs := make([]string, 0, len(params))
 	sig = append(sig, "ctx context.Context")
-	for _, pp := range pathParam.FindAllStringSubmatch(m.path, -1) {
+	for _, pp := range params {
 		arg := lowerFirst(goName(pp[1]))
 		sig = append(sig, arg+" string")
 		pathArgs = append(pathArgs, fmt.Sprintf("%q: %s", pp[1], arg))
@@ -537,9 +543,6 @@ func (g *gen) method(svc string, m method) string {
 		pathMap = "map[string]string{" + strings.Join(pathArgs, ", ") + "}"
 	}
 	req := fmt.Sprintf("request{method: %q, path: %q, pathParams: %s, query: %s, body: %s, multipart: %v}", m.verb, m.path, pathMap, queryArg, bodyArg, multipart)
-	if queryArg != "nil" {
-		req = strings.Replace(req, "query: params.values()", "query: params.values()", 1)
-	}
 	switch kind {
 	case "none":
 		fmt.Fprintf(&b, "func (s *%s) %s(%s) error {\n\treturn s.c.do(ctx, %s, nil)\n}\n\n", svc, mName, strings.Join(sig, ", "), req)

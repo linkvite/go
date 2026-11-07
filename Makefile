@@ -1,4 +1,4 @@
-.PHONY: test lint build clean cover generate check-generated release-major release-minor release-patch tag check-clean proxy
+.PHONY: test lint fmt build clean cover generate check-generated release-major release-minor release-patch tag check-clean proxy
 
 # Get current version from version.go
 VERSION := $(shell grep 'const Version' version.go | sed 's/.*"\(.*\)"/\1/')
@@ -34,6 +34,10 @@ check-generated:
 lint:
 	@echo "Running linter..."
 	@golangci-lint run
+
+# Apply gofumpt + goimports (the formatters lint checks)
+fmt:
+	@golangci-lint fmt
 
 # Build (verify compilation)
 build:
@@ -124,6 +128,7 @@ help:
 	@echo "  make test          - Run tests"
 	@echo "  make cover         - Run tests with coverage report"
 	@echo "  make lint          - Run golangci-lint"
+	@echo "  make fmt           - Format the code (gofumpt, goimports)"
 	@echo "  make build         - Verify compilation"
 	@echo "  make clean         - Remove generated files"
 	@echo "  make version       - Show current version"

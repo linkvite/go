@@ -9,7 +9,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/linkvite/go/v2"
+	linkvite "github.com/linkvite/go/v2"
 )
 
 func main() {

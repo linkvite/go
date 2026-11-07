@@ -344,7 +344,7 @@ func (c *Client) do(ctx context.Context, r request, out any) error {
 			return &Error{Status: 0, Message: "network error: " + err.Error(), Method: r.method, URL: u, cause: err}
 		}
 		if res.StatusCode == http.StatusUnauthorized && !refreshed && c.onUnauth != nil && !r.noAuth {
-			res.Body.Close()
+			drain(res)
 			refreshed = true
 			if t, err := c.onUnauth(ctx); err == nil && t != "" {
 				override = t
@@ -355,7 +355,7 @@ func (c *Client) do(ctx context.Context, r request, out any) error {
 		}
 		if (res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500) && attempt < retries {
 			wait := retryAfter(res)
-			res.Body.Close()
+			drain(res)
 			if wait == 0 {
 				wait = backoff(attempt)
 			}
@@ -366,8 +366,14 @@ func (c *Client) do(ctx context.Context, r request, out any) error {
 	}
 }
 
+// drain discards a response we won't read so its connection can be reused.
+func drain(res *http.Response) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
+	_ = res.Body.Close()
+}
+
 func decode(res *http.Response, method, u string, out any) error {
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return err
