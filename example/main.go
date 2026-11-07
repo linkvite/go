@@ -1,3 +1,6 @@
+// Example: list your bookmarks and save one.
+//
+//	LINKVITE_API_KEY=link_... go run ./example
 package main
 
 import (
@@ -6,72 +9,39 @@ import (
 	"log"
 	"os"
 
-	"github.com/joho/godotenv"
-	linkvite "github.com/linkvite/go"
+	"github.com/linkvite/go/v2"
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-	baseURL := os.Getenv("LINKVITE_BASE_URL")
-
-	// apiKey := os.Getenv("LINKVITE_API_KEY")
-	// if apiKey == "" {
-	// 	log.Fatal("LINKVITE_API_KEY not set in environment")
-	// }
-
-	// client, err := linkvite.NewClient(apiKey, linkvite.WithBaseURL(baseURL))
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	client, err := linkvite.NewClientWithCredentials(
-		context.Background(),
-		os.Getenv("LINKVITE_IDENTIFIER"),
-		os.Getenv("LINKVITE_PASSWORD"),
-		linkvite.WithBaseURL(baseURL),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	ctx := context.Background()
-
-	user, err := client.User.Get(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("Hello, %s!\n", user.Name)
-
-	collections, err := client.Collections.List(ctx, &linkvite.ListOptions{})
+	client, err := linkvite.NewClient(os.Getenv("LINKVITE_API_KEY"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, collection := range collections {
-		fmt.Printf("Collection: %s : %s\n", collection.ID, collection.Name)
-	}
-
-	members, err := client.Collections.GetMembers(ctx, "coll_7VC2WwmGAhDj")
+	me, err := client.User.Get(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, member := range members.Members {
-		fmt.Printf("Member: %s : %s\n", member.ID, member.Name)
-	}
+	fmt.Println("signed in as", me.Username)
 
-	storage, err := client.User.GetDetailedStorageUsage(ctx, &linkvite.ListOptions{})
+	b, err := client.Bookmarks.Create(ctx, &linkvite.CreateBookmarkRequest{URL: "https://go.dev/blog", Tags: "go"})
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Bookmarks: %v\n", storage.Bookmarks)
+	fmt.Println("saved", b.ID)
 
-	err = client.RefreshAccessToken(ctx)
-	if err != nil {
-		log.Fatal(err)
+	items := linkvite.Paginate(ctx, func(ctx context.Context, page int) ([]linkvite.BookmarkResponse, *linkvite.Pagination, error) {
+		r, err := client.Bookmarks.GetAll(ctx, &linkvite.BookmarksGetAllParams{Page: linkvite.Ptr(page), Limit: linkvite.Ptr(100)})
+		if err != nil {
+			return nil, nil, err
+		}
+		return r.Bookmarks, r.Pagination, nil
+	})
+	for b, err := range items {
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("-", b.Title, b.URL)
 	}
-
-	fmt.Println("Access token refreshed successfully")
 }

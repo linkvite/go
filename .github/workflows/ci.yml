@@ -18,6 +18,9 @@ jobs:
         with:
           go-version: "1.24"
 
+      - name: Generated code is current
+        run: go run ./internal/gen -check
+
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out ./...
 
@@ -48,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ["1.21", "1.22", "1.23", "1.24"]
+        go-version: ["1.24", "stable"]
     steps:
       - uses: actions/checkout@v4
 

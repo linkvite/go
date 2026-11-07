@@ -1,418 +1,132 @@
-# Linkvite Go SDK
+# linkvite-go
 
-🦫 Official Go SDK for [Linkvite](https://linkvite.io) - a bookmarking service for saving, organizing, and sharing bookmarks.
+The official Go SDK for [Linkvite](https://linkvite.io). Its services and types are generated from the Linkvite OpenAPI spec, so every endpoint, request and response matches the API.
 
-## Installation
-
-```bash
-go get github.com/linkvite/go
+```sh
+go get github.com/linkvite/go/v2
 ```
 
-## Quick Start
+Requires Go 1.24+. No dependencies outside the standard library.
 
-### With API Key
+## Quick start
 
 ```go
-package main
+client, err := linkvite.NewClient(os.Getenv("LINKVITE_API_KEY"))
+if err != nil {
+	log.Fatal(err)
+}
 
-import (
-    "context"
-    "fmt"
-    "log"
+b, err := client.Bookmarks.Create(ctx, &linkvite.CreateBookmarkRequest{
+	URL:  "https://example.com",
+	Tags: "reading",
+})
 
-    linkvite "github.com/linkvite/go"
-)
+page, err := client.Bookmarks.GetAll(ctx, &linkvite.BookmarksGetAllParams{
+	Q:     linkvite.Ptr("rust"),
+	Limit: linkvite.Ptr(50),
+})
+```
 
-func main() {
-    client, err := linkvite.NewClient("link_your-api-key")
-    if err != nil {
-        log.Fatal(err)
-    }
-    ctx := context.Background()
+Path parameters are arguments, request bodies are `*XRequest` structs, and query parameters are `*XParams` structs (pass `nil` for none). Optional values are pointers: use `linkvite.Ptr`.
 
-    // Get current user
-    user, err := client.User.Get(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Printf("Hello, %s!\n", user.Name)
+## Authentication
 
-    // Create a bookmark
-    bookmark, err := client.Bookmarks.Create(ctx, &linkvite.CreateBookmarkInput{
-        URL: "https://example.com",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Printf("Created bookmark: %s\n", bookmark.Title)
+| You're building | Use |
+| --- | --- |
+| A script or server acting as your own account | An **API key** (Settings → Developers): `linkvite.NewClient("link_...")` |
+| An app other people sign in to | **OAuth** (authorization code + PKCE), below |
+| A first-party tool signing in with a password | `linkvite.NewClientWithCredentials(ctx, user, pass)` |
+
+### OAuth with golang.org/x/oauth2
+
+The oauth2 package's HTTP client adds the bearer token and refreshes it (Linkvite's refresh tokens rotate; `oauth2.ReuseTokenSource` handles that).
+
+```go
+conf := &oauth2.Config{
+	ClientID:    "app_...",
+	RedirectURL: "https://example.com/callback",
+	Scopes:      []string{"bookmarks:read", "bookmarks:write"},
+	Endpoint:    oauth2.Endpoint{AuthURL: linkvite.AuthURL, TokenURL: linkvite.TokenURL},
+}
+verifier := oauth2.GenerateVerifier()
+url := conf.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
+// ...on the redirect back:
+tok, err := conf.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+
+client, err := linkvite.NewClient("", linkvite.WithHTTPClient(conf.Client(ctx, tok)))
+```
+
+Or bring your own token: `linkvite.NewClientWithTokens(access, refresh)`, `WithTokenSource(...)`, and `WithOnUnauthorized(...)` to refresh and retry once on a 401.
+
+## Errors
+
+```go
+_, err := client.Bookmarks.Get(ctx, "bmk_123")
+var e *linkvite.Error
+if errors.As(err, &e) {
+	e.Status    // 400, 401, 402 (Pro required), 404, 429, ... (0: network error)
+	e.Errors    // field -> problem, for validation errors
+	e.RequestID // quote this when contacting support
+}
+if linkvite.IsNotFound(err) { ... }
+```
+
+Idempotent requests (GET, PUT, DELETE) are retried on 429, 5xx and network errors (twice by default, honouring `Retry-After`; `WithMaxRetries` changes it). Cancel with the context.
+
+## Pagination
+
+```go
+for b, err := range linkvite.Paginate(ctx, func(ctx context.Context, page int) ([]linkvite.BookmarkResponse, *linkvite.Pagination, error) {
+	r, err := client.Bookmarks.GetAll(ctx, &linkvite.BookmarksGetAllParams{Page: linkvite.Ptr(page), Limit: linkvite.Ptr(100)})
+	if err != nil {
+		return nil, nil, err
+	}
+	return r.Bookmarks, r.Pagination, nil
+}) {
+	if err != nil {
+		return err
+	}
+	fmt.Println(b.Title)
 }
 ```
 
-### With Access Token
+## Files
 
 ```go
-// Using access token only
-client, err := linkvite.NewClient("", linkvite.WithAccessToken("your-access-token"))
-
-// Using access token with refresh token
-client, err := linkvite.NewClientWithTokens("access-token", "refresh-token")
-
-// Or using options
-client, err := linkvite.NewClient("",
-    linkvite.WithTokens("access-token", "refresh-token"),
-)
-
-// Refresh the access token when needed
-err := client.RefreshAccessToken(ctx)
+f, _ := os.Open("paper.pdf")
+err := client.Bookmarks.CreateFile(ctx, &linkvite.BookmarksCreateFileRequest{
+	File:       linkvite.File{Name: "paper.pdf", Reader: f},
+	Collection: linkvite.Ptr("col_123"),
+})
 ```
 
-## Configuration
+## Anything else
 
-```go
-client, err := linkvite.NewClient("link_your-api-key",
-    linkvite.WithBaseURL("https://custom.api.url"),
-    linkvite.WithHTTPClient(customHTTPClient),
-    linkvite.WithUserAgent("my-app/1.0"),
-)
-```
+`client.Do(ctx, method, path, query, body, &out)` calls any endpoint, including ones newer than the SDK, decoding the response's `data` into `out`.
 
 ## Services
 
-### Bookmarks
+`APIKeys`, `Apps`, `Bookmarks`, `Collections`, `Comments`, `Explore`, `Feed`, `Files`, `Highlights`, `InviteLinks`, `Invites`, `Notifications`, `Parser`, `Plans`, `Profiles`, `Reminders`, `RSSFeeds`, `Search`, `User`. Each method's doc comment gives its scope, rate limit and route; the full reference is at [docs.linkvite.io](https://docs.linkvite.io).
 
-```go
-// List bookmarks
-result, err := client.Bookmarks.List(ctx, &linkvite.ListOptions{
-    Page:  1,
-    Limit: 20,
-})
+## Upgrading from v1
 
-// Get a single bookmark
-bookmark, err := client.Bookmarks.Get(ctx, "bmk_abc123")
+- Import `github.com/linkvite/go/v2`.
+- Types are now named after the API's schemas (`CreateBookmarkRequest`, `BookmarkResponse`, ...), and list methods take a `*XParams` struct.
+- Errors are `*linkvite.Error` (`Status`, `Errors`, `RequestID`).
+- New services: `Apps`, `Explore`, `Feed`, `Files`, `InviteLinks`, `Notifications`, `Plans`, `Profiles`.
+- Removed (no longer in the API): bookmark re-parse, bookmarks by tag, collection star, comment report.
 
-// Create a bookmark
-bookmark, err := client.Bookmarks.Create(ctx, &linkvite.CreateBookmarkInput{
-    URL:         "https://example.com",
-    Title:       "Example Site",
-    Description: "An example website",
-    Collection:  "coll_xyz789",
-    Tags:        "example,test",
-})
+## Development
 
-// Edit a bookmark
-bookmark, err := client.Bookmarks.Edit(ctx, "bmk_abc123", &linkvite.EditBookmarkInput{
-    Name: "New Title",
-})
-
-// Delete a bookmark
-err := client.Bookmarks.Delete(ctx, "bmk_abc123")
-
-// Toggle star
-err := client.Bookmarks.ToggleStar(ctx, "bmk_abc123")
-
-// Check if bookmark exists
-result, err := client.Bookmarks.Exists(ctx, &linkvite.BookmarkExistsInput{
-    URL: "https://example.com",
-})
+```sh
+make generate SPEC=../cultus/api/openapi.json   # refresh the spec (cultus: make openapi) and regenerate
+make check                                       # generated code current + lint + tests
 ```
 
-### Collections
+`types_gen.go` and `services_gen.go` are generated by `internal/gen`; don't edit them. Method names come from `x-linkvite-sdk` in the spec, shared with the JS SDK.
 
-```go
-// List collections
-collections, err := client.Collections.List(ctx, nil)
-
-// Get a collection
-collection, err := client.Collections.Get(ctx, "coll_xyz789")
-
-// Create a collection
-collection, err := client.Collections.Create(ctx, &linkvite.CreateCollectionInput{
-    Name:        "My Collection",
-    Description: "A collection of bookmarks",
-})
-
-// Edit a collection
-collection, err := client.Collections.Edit(ctx, "coll_xyz789", &linkvite.EditCollectionInput{
-    Name:      "New Name",
-    IsPrivate: linkvite.Ptr(false),
-})
-
-// Delete a collection
-err := client.Collections.Delete(ctx, "coll_xyz789")
-
-// Get collection members
-members, err := client.Collections.GetMembers(ctx, "coll_xyz789")
-
-// Invite a user to a collection
-err := client.Collections.InviteUser(ctx, "coll_xyz789", &linkvite.InviteUserInput{
-    Identifier: "user@example.com",
-    Role:       linkvite.RoleLevelViewer,
-})
-
-// Leave a collection
-err := client.Collections.Leave(ctx, "coll_xyz789")
-```
-
-### User
-
-```go
-// Get current user
-user, err := client.User.Get(ctx)
-
-// Edit user profile
-user, err := client.User.Edit(ctx, &linkvite.EditUserInput{
-    Name: linkvite.Ptr("New Name"),
-})
-
-// Edit user settings
-user, err := client.User.EditSettings(ctx, &linkvite.EditSettingsInput{
-    PushEnabled: linkvite.Ptr(true),
-})
-
-// Get storage usage
-storage, err := client.User.GetStorageUsage(ctx)
-
-// Empty trash
-err := client.User.EmptyTrash(ctx)
-```
-
-### Comments
-
-```go
-// List comments on a bookmark
-comments, err := client.Comments.List(ctx, "bmk_abc123")
-
-// Create a comment
-comment, err := client.Comments.Create(ctx, &linkvite.CreateCommentInput{
-    BookmarkID: "bmk_abc123",
-    Content:    "Great article!",
-})
-
-// Delete a comment
-err := client.Comments.Delete(ctx, "cmt_xyz789")
-
-// Toggle like on a comment
-err := client.Comments.ToggleLike(ctx, "cmt_xyz789")
-
-// Get likes on a comment
-likes, err := client.Comments.GetLikes(ctx, "cmt_xyz789")
-
-// Report a comment
-err := client.Comments.Report(ctx, "cmt_xyz789")
-```
-
-### Highlights
-
-```go
-// List highlights on a bookmark
-result, err := client.Highlights.List(ctx, "bmk_abc123")
-
-// Create a highlight
-result, err := client.Highlights.Create(ctx, &linkvite.CreateHighlightInput{
-    ID:         "hil_xyz789",  // Client-generated ID
-    BookmarkID: "bmk_abc123",
-    Color:      linkvite.HighlightColor1,
-    Start:      linkvite.Ptr(0),
-    End:        linkvite.Ptr(50),
-    Exact:      "The exact highlighted text",
-    Note:       "My note about this",
-})
-
-// Available highlight colors
-linkvite.HighlightColor1  // "lv-highlighter-1"
-linkvite.HighlightColor2  // "lv-highlighter-2"
-linkvite.HighlightColor3  // "lv-highlighter-3"
-linkvite.HighlightColor4  // "lv-highlighter-4"
-linkvite.HighlightColor5  // "lv-highlighter-5"
-
-// Edit a highlight
-highlight, err := client.Highlights.Edit(ctx, "hil_xyz789", &linkvite.EditHighlightInput{
-    Note:  "Updated note",
-    Color: linkvite.HighlightColor2,
-})
-
-// Delete a highlight
-err := client.Highlights.Delete(ctx, "hil_xyz789")
-```
-
-### Reminders
-
-```go
-// List reminders
-result, err := client.Reminders.List(ctx, &linkvite.ListOptions{})
-
-// Get a reminder
-reminder, err := client.Reminders.Get(ctx, "rem_abc123")
-
-// Create a reminder
-reminder, err := client.Reminders.Create(ctx, &linkvite.CreateReminderInput{
-    BookmarkID: "bmk_abc123",
-    RemindAt:   time.Now().Add(24 * time.Hour),
-    Note:       "Read this article",
-})
-
-// Edit a reminder
-reminder, err := client.Reminders.Edit(ctx, "rem_abc123", &linkvite.EditReminderInput{
-    Completed: linkvite.Ptr(true),
-})
-
-// Delete a reminder
-err := client.Reminders.Delete(ctx, "rem_abc123")
-
-// Batch operations
-err := client.Reminders.BatchEdit(ctx, &linkvite.BatchEditRemindersInput{
-    Reminders: []string{"rem_1", "rem_2"},
-    Completed: linkvite.Ptr(true),
-})
-
-err := client.Reminders.BatchDelete(ctx, &linkvite.BatchDeleteRemindersInput{
-    Reminders: []string{"rem_1", "rem_2"},
-})
-
-err := client.Reminders.Clear(ctx)
-```
-
-### Invites
-
-```go
-// List pending invites
-invites, err := client.Invites.List(ctx)
-
-// Get an invite
-invite, err := client.Invites.Get(ctx, "inv_abc123")
-
-// Accept an invite
-err := client.Invites.Accept(ctx, "inv_abc123")
-
-// Decline an invite
-err := client.Invites.Decline(ctx, "inv_abc123")
-
-// Batch operations
-err := client.Invites.BatchAccept(ctx, &linkvite.BatchInviteInput{
-    Invites: []string{"inv_1", "inv_2"},
-})
-
-err := client.Invites.BatchDecline(ctx, &linkvite.BatchInviteInput{
-    Invites: []string{"inv_1", "inv_2"},
-})
-
-// Decline all invites
-err := client.Invites.DeclineAll(ctx)
-```
-
-### Search
-
-```go
-// Search Linkvite
-results, err := client.Search.Search(ctx, &linkvite.SearchInput{
-    Query: "golang",
-    Type:  "bookmarks", // "bookmarks", "collections", or "users"
-    Page:  1,
-    Limit: 20,
-})
-
-// Search Unsplash for images
-photos, err := client.Search.SearchUnsplash(ctx, "nature", 1)
-
-// Track Unsplash download (for attribution)
-err := client.Search.TrackUnsplashDownload(ctx, "photo_id")
-
-// Search Tenor for GIFs
-gifs, err := client.Search.SearchTenor(ctx, "coding")
-```
-
-### RSS Feeds
-
-```go
-// List RSS feeds
-feeds, err := client.RSSFeeds.List(ctx, &linkvite.ListOptions{})
-
-// Create an RSS feed subscription
-feed, err := client.RSSFeeds.Create(ctx, &linkvite.CreateRSSFeedInput{
-    URL:          "https://example.com/feed.xml",
-    CollectionID: "coll_xyz789",
-})
-
-// Get RSS feed items
-items, err := client.RSSFeeds.GetItems(ctx, "rss_abc123")
-
-// Edit an RSS feed
-feed, err := client.RSSFeeds.Edit(ctx, "rss_abc123", &linkvite.EditRSSFeedInput{
-    Title: "New Title",
-})
-
-// Batch delete RSS feeds
-err := client.RSSFeeds.BatchDelete(ctx, &linkvite.BatchDeleteRSSFeedsInput{
-    Feeds: []string{"rss_1", "rss_2"},
-})
-```
-
-### API Keys
-
-```go
-// List API keys
-keys, err := client.APIKeys.List(ctx)
-
-// Create an API key
-result, err := client.APIKeys.Create(ctx, &linkvite.CreateAPIKeyInput{
-    Name:   "My API Key",
-    Scopes: []string{"read", "write"},
-})
-// result.Key contains the full API key (only available once)
-
-// Edit an API key
-key, err := client.APIKeys.Edit(ctx, "key_abc123", &linkvite.EditAPIKeyInput{
-    Name: "Updated Name",
-})
-```
-
-### Parser
-
-```go
-// Parse a URL to get its metadata
-parsed, err := client.Parser.ParseLink(ctx, "https://example.com")
-
-// Import parsed items as bookmarks
-err := client.Parser.Import(ctx, &linkvite.ImportParsedItemsInput{
-    Items:      []linkvite.ParsedLink{...},
-    Collection: "coll_xyz789",
-})
-```
-
-## Error Handling
-
-```go
-bookmark, err := client.Bookmarks.Get(ctx, "invalid-id")
-if err != nil {
-    if apiErr, ok := err.(*linkvite.Error); ok {
-        if apiErr.IsNotFound() {
-            fmt.Println("Bookmark not found")
-        } else if apiErr.IsUnauthorized() {
-            fmt.Println("Invalid authentication")
-        } else if apiErr.IsForbidden() {
-            fmt.Println("Access forbidden")
-        } else if apiErr.IsRateLimited() {
-            fmt.Println("Rate limited, try again later")
-        } else {
-            fmt.Printf("API error: %s\n", apiErr.Message)
-        }
-    } else {
-        fmt.Printf("Error: %v\n", err)
-    }
-}
-```
-
-## Helper Functions
-
-```go
-// Use Ptr() to create pointers for optional fields
-input := &linkvite.EditBookmarkInput{
-    Description: linkvite.Ptr("New description"),
-    Starred:     linkvite.Ptr(true),
-}
-```
+To release a new version, see [RELEASE.md](RELEASE.md).
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
+MIT

@@ -1,5 +1,4 @@
 package linkvite
 
-// Version is the SDK version.
-// It is updated whenever a new version of the SDK is released.
-const Version = "1.3.0"
+// Version is the SDK version, sent in the User-Agent.
+const Version = "2.0.0"
