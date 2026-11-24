@@ -1198,6 +1198,7 @@ type ReminderItem struct {
 	Description string `json:"description"`
 	ID          string `json:"id"`
 	Title       string `json:"title"`
+	URL         string `json:"url,omitempty"`
 }
 
 type RequestOtprequest struct {
